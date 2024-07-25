@@ -50,17 +50,6 @@ class Feed(object):
 
     self._packet_queue = Queue()
     self._packet_lock = threading.Lock()
-    self._heartbeat_thread = threading.Thread(
-      target=self._send_heartbeat,
-      name='HeartbeatThread')
-    self._receiver_thread = threading.Thread(
-      target=self._get,
-      name='ReceiverThread'
-    )
-
-  def __enter__(self):
-    self.start()
-    return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self.close()
@@ -77,10 +66,7 @@ class Feed(object):
     self._sock_bounded = True
     self._decrypter = Decrypter()
 
-    # start heartbeat thread
-    self._heartbeat_thread.start()
-    self._receiver_thread.start()
-    return self
+    # return self
 
   def close(self):
     """
@@ -89,62 +75,30 @@ class Feed(object):
     :return: None
     """
     self._terminate_event.set()
-    if self._heartbeat_thread.is_alive():
-      self._heartbeat_thread.join()
 
   def get(self) -> Packet:
-    """
-    Waits for the next packet to be sent from PlayStation, decrypts, and unpacks it into a Packet object.
-    :return: Packet containing latest telemetry data
-    """
-    if not self._sock_bounded:
-      raise SocketNotBoundError('Not started. Call `.start` or `with Listener(your_ip_addr)` before calling `.get`')
-
-    self._packet_lock.acquire()
-    if not self._packet_queue.empty():
-      packet = self._packet_queue.get_nowait()
-      self._packet_queue.task_done()
-      self._packet_lock.release()
-      return packet
-    else:
-      self._packet_lock.release()
-      return self._packet_queue.get(block=True)
-
-  def _get(self) -> None:
-    while not self._terminate_event.is_set():
+    if not self._terminate_event.is_set():
       try:
         data, _ = self._sock.recvfrom(Feed._BUFFER_LEN)
         received_time = time.time()
 
         # breaking early so unit tests don't throw annoying error
         if self._terminate_event.is_set():
-          break
+          return
 
       except Exception as e:
         raise ReadError(f'Failed to read message on port {self._BIND_PORT}: {e}')
 
       data = self._decrypter.decrypt(data)
       packet = Packet.from_bytes(data, received_time)
+      return packet
 
-      # we need to wrap in a lock so we can insure the queue contains at most 1 item.
-      self._packet_lock.acquire()
-      try:
-        if not self._packet_queue.empty():
-          self._packet_queue.get_nowait()
-          self._packet_queue.task_done()
-        self._packet_queue.put_nowait(packet)
-      finally:
-        self._packet_lock.release()
-
-  def _send_heartbeat(self) -> None:
-    last_heartbeat = 0
-    while not self._terminate_event.is_set():
-      curr_time = time.time()
-      if curr_time - last_heartbeat >= self._HEARTBEAT_DELAY:
-        last_heartbeat = curr_time
+  def send_heartbeat(self) -> None:
+    if not self._terminate_event.is_set():
         self._sock.sendto(self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT))
-    self._sock.close()
-    self._sock_bounded = False
+    else:
+        self._sock.close()
+        self._sock_bounded = False
 
   @staticmethod
   def _init_sock_() -> socket.socket:
@@ -153,6 +107,7 @@ class Feed(object):
                          socket.SOCK_DGRAM)  # UDP
     # Enable immediate reuse of IP address
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(Feed._HEARTBEAT_DELAY)
     # Bind the socket to the port
     sock.bind(('', Feed._BIND_PORT))
 
