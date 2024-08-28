@@ -4,6 +4,8 @@ import datetime as dt
 import time, sys
 import curses
 
+from granturismo.security.decrypter import GT_Version
+
 stdscr = curses.initscr()
 
 # This function is used to rewrite multiple lines on the terminal
@@ -18,7 +20,7 @@ if __name__ == '__main__':
   ip_address = sys.argv[1]
 
   # To use the Listener session without a `with` clause, you'll need to call the `.start()` function.
-  feed = Feed(ip_address)
+  feed = Feed(ip_address, GT_Version.GT7)
   feed.start()
 
   try:

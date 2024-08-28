@@ -5,6 +5,7 @@ a heatmap color to depict the speed.
 """
 import sys
 from granturismo import Feed
+from granturismo.security.decrypter import GT_Version
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
@@ -22,7 +23,7 @@ if __name__ == '__main__':
   px, pz = None, None
 
   count = 0
-  with Feed(ip_address) as feed:
+  with Feed(ip_address, GT_Version.GT7) as feed:
     while True:
       count += 1
       # only update graph every 10th of a second just cuz it doesn't matter for us, and it's easier on the computer

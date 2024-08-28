@@ -1,3 +1,4 @@
+from granturismo.security.decrypter import GT_Version
 from tests.test_base import TestBase
 from granturismo.security import Decrypter as sut
 from typing import Tuple
@@ -14,5 +15,5 @@ class DecrypterTest(TestBase):
 
   def test_decrypt(self):
     buffer, expected = self.get_input_output()
-    actual = sut.decrypt(buffer)
+    actual = sut(GT_Version.GT7).decrypt(buffer)
     actual.should.eql(expected)

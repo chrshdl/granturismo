@@ -6,6 +6,8 @@ from granturismo.model import Packet
 from granturismo.security import Decrypter
 from queue import Queue
 
+from granturismo.security.decrypter import GT_Version
+
 class SocketNotBoundError(Exception):
   pass
 
@@ -23,7 +25,7 @@ class Feed(object):
   _HEARTBEAT_DELAY = 10 # in seconds
   _HEARTBEAT_MESSAGE = b'A'
 
-  def __init__(self, addr: str):
+  def __init__(self, addr: str, gt_version: GT_Version = GT_Version.GT7):
     """
     Initialize the telemetry listener.
     This will spawn a background thread to send heartbeat signals to the PlayStation. Be sure to call `.stop()` when
@@ -50,6 +52,7 @@ class Feed(object):
 
     self._packet_queue = Queue()
     self._packet_lock = threading.Lock()
+    self.gt_version = gt_version
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self.close()
@@ -64,7 +67,7 @@ class Feed(object):
     # connect to socket
     self._sock = self._init_sock_()
     self._sock_bounded = True
-    self._decrypter = Decrypter()
+    self._decrypter = Decrypter(self.gt_version)
 
     # return self
 
