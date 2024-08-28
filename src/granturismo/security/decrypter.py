@@ -12,7 +12,7 @@ class GT_Version(Enum):
 class Decrypter(object):
   def __init__(self, gt: GT_Version = GT_Version.GT7):
     if gt == GT_Version.GT6:
-      self._KEY = b'Simulator Interface Packet GT6 v' #er 0.0 ... we only need 32-bits
+      self._KEY = b'Simulator Interface Packet ver 0.0'
       self._BYTE_ORDER = 'big'
       self._IV_MASK = 0xDEADBEAF
       self._GT_ID = 0x30533647
