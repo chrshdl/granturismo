@@ -4,8 +4,7 @@ You'll see the plot update as you drive around the track, with the car's path us
 a heatmap color to depict the speed.
 """
 import sys
-from granturismo import Feed
-from granturismo.security.decrypter import GT_Version
+from granturismo import Feed, GT_Version
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':

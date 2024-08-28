@@ -1,10 +1,8 @@
-from granturismo import Feed
+from granturismo import Feed, GT_Version
 from granturismo.model import Wheels
 import datetime as dt
 import time, sys
 import curses
-
-from granturismo.security.decrypter import GT_Version
 
 stdscr = curses.initscr()
 

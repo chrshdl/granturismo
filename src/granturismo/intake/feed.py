@@ -3,10 +3,8 @@ import time
 import threading
 import signal
 from granturismo.model import Packet
-from granturismo.security import Decrypter
+from granturismo.security import Decrypter, GT_Version
 from queue import Queue
-
-from granturismo.security.decrypter import GT_Version
 
 class SocketNotBoundError(Exception):
   pass
