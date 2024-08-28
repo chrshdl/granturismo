@@ -11,7 +11,7 @@ test_requirements=['sure', 'unittest', 'pytest-cov', 'pylint-fail-under']
 
 setup(
   name='granturismo',
-  version="0.1.1",
+  version="0.1.2",
   author='Lucas Pettit',
   author_email='lucaspettit64@gmail.com',
   description='Get Grand Turismo telemetry data from the PlayStation console',
