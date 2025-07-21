@@ -110,41 +110,56 @@ class Feed(object):
       self._packet_lock.release()
       return self._packet_queue.get(block=True)
 
+  def get_nowait(self) -> Packet | None:
+    """
+    Returns the latest Packet from the queue if available, or None if the queue is empty.
+    Never blocks.
+    """
+    self._packet_lock.acquire()
+    try:
+      if not self._packet_queue.empty():
+        packet = self._packet_queue.get_nowait()
+        self._packet_queue.task_done()
+        return packet
+      else:
+        return None
+    finally:
+      self._packet_lock.release()
+
   def _get(self) -> None:
+    error_count = 0
     while not self._terminate_event.is_set():
       try:
         data, _ = self._sock.recvfrom(Feed._BUFFER_LEN)
         received_time = time.time()
-
-        # breaking early so unit tests don't throw annoying error
         if self._terminate_event.is_set():
           break
-
-      except Exception as e:
-        raise ReadError(f'Failed to read message on port {self._BIND_PORT}: {e}')
-
-      data = self._decrypter.decrypt(data)
-      packet = Packet.from_bytes(data, received_time)
-
-      # we need to wrap in a lock so we can insure the queue contains at most 1 item.
-      self._packet_lock.acquire()
-      try:
-        if not self._packet_queue.empty():
-          self._packet_queue.get_nowait()
-          self._packet_queue.task_done()
-        self._packet_queue.put_nowait(packet)
-      finally:
-        self._packet_lock.release()
+  
+        data = self._decrypter.decrypt(data)
+        packet = Packet.from_bytes(data, received_time)
+  
+        self._packet_lock.acquire()
+        try:
+          if not self._packet_queue.empty():
+            self._packet_queue.get_nowait()
+            self._packet_queue.task_done()
+          self._packet_queue.put_nowait(packet)
+        finally:
+          self._packet_lock.release()
+        error_count = 0
+      except Exception:
+        error_count += 1
+        if error_count > 5:
+          # small backoff if repeatedly erroring
+          time.sleep(0.1)
 
   def _send_heartbeat(self) -> None:
-    last_heartbeat = 0
     while not self._terminate_event.is_set():
-      curr_time = time.time()
-      if curr_time - last_heartbeat >= self._HEARTBEAT_DELAY:
-        last_heartbeat = curr_time
-        self._sock.sendto(self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT))
+      self._sock.sendto(self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT))
+      self._terminate_event.wait(self._HEARTBEAT_DELAY)
     self._sock.close()
     self._sock_bounded = False
+
 
   @staticmethod
   def _init_sock_() -> socket.socket:
