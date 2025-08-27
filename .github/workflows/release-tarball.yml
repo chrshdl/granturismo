@@ -1,4 +1,4 @@
-name: build-selfcontained-tarball
+name: Build self-contained tarball
 
 on:
   push:
@@ -35,12 +35,15 @@ jobs:
         run: |
           mkdir -p dist
           python scripts/build_tarball.py --lib-root . --output dist/granturismo-selfcontained.tar.gz
+          ver=$(git describe --tags --always)
+          ver=${ver#v}
+          mv dist/granturismo-selfcontained.tar.gz dist/granturismo-selfcontained-$ver.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: granturismo-selfcontained
-          path: dist/granturismo-selfcontained.tar.gz
+          path: dist/granturismo-selfcontained-*.tar.gz
 
   release:
     needs: build
@@ -58,5 +61,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/granturismo-selfcontained.tar.gz
+          files: dist/granturismo-selfcontained-*.tar.gz
 

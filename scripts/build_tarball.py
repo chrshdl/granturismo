@@ -75,6 +75,8 @@ def write_version(dest: Path, lib_root: Path):
             text=True,
         )
         ver = cp.stdout.strip()
+        if ver.startswith("v"):
+            ver = ver[1:]
     except Exception:
         ver = "0.0.0+" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
     (dest / "VERSION.txt").write_text(ver + "\n", encoding="utf-8")
