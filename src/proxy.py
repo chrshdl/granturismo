@@ -46,6 +46,7 @@ def main(argv=None) -> int:
         "--jsonl-output",
         default=os.environ.get("GT_JSONL_OUTPUT", "udp://127.0.0.1:5600"),
     )
+    ap.add_argument("--get-latest-timeout", default=0.02)
     ap.add_argument("--include-paused", action="store_true")
     args = ap.parse_args(argv)
 
@@ -61,14 +62,18 @@ def main(argv=None) -> int:
     feed.start()
     try:
         while True:
-            pkt = feed.get_nowait()
-            if pkt:
-                payload = to_jsonable(pkt)
-                if isinstance(payload, dict) and "received_time" not in payload:
-                    payload["received_time"] = time.time()
+            pkt = feed.get_latest(timeout=args.get_latest_timeout)
 
-                line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
-                sock.sendto(line, (host, port))
+            if pkt is None:
+                continue
+
+            payload = to_jsonable(pkt)
+            if isinstance(payload, dict) and "received_time" not in payload:
+                payload["received_time"] = time.time()
+
+            line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+            sock.sendto(line, (host, port))
+
     except KeyboardInterrupt:
         pass
     finally:
@@ -81,4 +86,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
