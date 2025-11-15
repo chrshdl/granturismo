@@ -46,12 +46,12 @@ def main(argv=None) -> int:
         "--jsonl-output",
         default=os.environ.get("GT_JSONL_OUTPUT", "udp://127.0.0.1:5600"),
     )
-    ap.add_argument("--get-latest-timeout", default=0.02)
+    ap.add_argument("--get-latest-timeout", type=float, default=0.02)
     ap.add_argument("--include-paused", action="store_true")
     args = ap.parse_args(argv)
 
     if not args.ps_ip:
-        sys.stderr.write("--ps-ip (or GT_PS_IP) is required.\\n")
+        sys.stderr.write("--ps-ip (or GT_PS_IP) is required.\n")
         return 2
 
     host, port = parse_udp_url(args.jsonl_output)
