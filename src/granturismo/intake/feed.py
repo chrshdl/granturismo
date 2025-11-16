@@ -167,21 +167,21 @@ class Feed(object):
             try:
                 data, _ = self._sock.recvfrom(Feed._BUFFER_LEN)
 
-                # measure how many packets in last 20 ms
-                now_mono = time.monotonic()
-                self._recv_times.append(now_mono)
+                # # measure how many packets in last 20 ms
+                # now_mono = time.monotonic()
+                # self._recv_times.append(now_mono)
 
-                window = 0.020
-                while self._recv_times and now_mono - self._recv_times[0] > window:
-                    self._recv_times.popleft()
+                # window = 0.020
+                # while self._recv_times and now_mono - self._recv_times[0] > window:
+                #     self._recv_times.popleft()
 
-                packets_last_20ms = len(self._recv_times)
+                # packets_last_20ms = len(self._recv_times)
 
-                # log every 0.5 s
-                if now_mono - self._last_log >= 0.5:
-                    print(f"≈{packets_last_20ms} packets in the last 20 ms")
-                    self._last_log = now_mono
-                # end measurement
+                # # log every 0.5 s
+                # if now_mono - self._last_log >= 0.5:
+                #     print(f"≈{packets_last_20ms} packets in the last 20 ms")
+                #     self._last_log = now_mono
+                # # end measurement
 
                 received_time = time.time()
                 if self._terminate_event.is_set():

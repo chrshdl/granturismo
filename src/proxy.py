@@ -62,7 +62,7 @@ def main(argv=None) -> int:
     feed.start()
     try:
         while True:
-            pkt = feed.get_latest(timeout=args.get_latest_timeout)
+            pkt = feed.get_latest(timeout=0.02)
 
             if pkt is None:
                 continue
