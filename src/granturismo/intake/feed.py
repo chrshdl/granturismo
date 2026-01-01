@@ -1,3 +1,4 @@
+import random
 import signal
 import socket
 import threading
@@ -206,11 +207,34 @@ class Feed(object):
                     time.sleep(0.1)
 
     def _send_heartbeat(self) -> None:
+        backoff = 0.5
+        backoff_max = 30.0
+        next_log = 0.0
+
         while not self._terminate_event.is_set():
-            self._sock.sendto(
-                self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT)
-            )
-            self._terminate_event.wait(self._HEARTBEAT_DELAY)
+            try:
+                self._sock.sendto(
+                    self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT)
+                )
+                backoff = 0.5
+                self._terminate_event.wait(self._HEARTBEAT_DELAY)
+
+            except OSError as e:
+                # network issues (e.g. "No route to host")
+                now = time.monotonic()
+                if now >= next_log:
+                    print(
+                        f"Hearbeart send failed ({e}). Retrying in {backoff:.1f}s ..."
+                    )
+                    next_log = now + 10.0
+
+                # exponential backoff
+                sleep_for = min(backoff, backoff_max)
+                sleep_for *= 0.9 + 0.2 * random.random()
+                self._terminate_event.wait(sleep_for)
+
+                backoff = min(backoff * 2.0, backoff_max)
+
         self._sock.close()
         self._sock_bounded = False
 
@@ -223,6 +247,8 @@ class Feed(object):
         )  # UDP
         # Enable immediate reuse of IP address
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # check terminate_event every 5 seconds
+        # sock.settimeout(5.0)
         # Bind the socket to the port
         sock.bind(("", Feed._BIND_PORT))
 
