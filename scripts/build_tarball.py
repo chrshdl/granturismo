@@ -147,6 +147,39 @@ def make_tarball(stage: Path, output: Path):
             tf.add(child, arcname=child.name)
 
 
+def stage_wrapper(dest: Path, kit_root: Path | None = None):
+    """
+    Copies src/proxy-wrapper.py to the root of the bundle.
+    """
+    # Look for proxy-wrapper.py in similar locations to proxy.py
+    candidates = []
+    if kit_root:
+        candidates.append(kit_root / "src" / "proxy-wrapper.py")
+
+    # Try relative to this script's parent (../src/proxy-wrapper.py)
+    candidates.append(
+        Path(__file__).resolve().parent.parent / "src" / "proxy-wrapper.py"
+    )
+    # Try CWD
+    candidates.append(Path.cwd() / "src" / "proxy-wrapper.py")
+
+    wrapper_src = None
+    for c in candidates:
+        if c.exists():
+            wrapper_src = c
+            break
+
+    if not wrapper_src:
+        raise SystemExit("Missing src/proxy-wrapper.py")
+
+    # Copy to the ROOT of the staging dir
+    dest_file = dest / "proxy-wrapper.py"
+    shutil.copy2(wrapper_src, dest_file)
+
+    # Ensure it is executable
+    dest_file.chmod(dest_file.stat().st_mode | 0o111)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -174,9 +207,13 @@ def main():
         print(f"Staging at {stage}")
         copy_lib(lib_root, stage)
         stage_proxy(stage, kit_root=kit_root)
+
+        stage_wrapper(stage, kit_root=kit_root)
+
         vendor_deps_with_uv(stage, args.deps)
         version = write_version(stage, lib_root)
         write_bundle_readme(stage, version)
+
         out.parent.mkdir(parents=True, exist_ok=True)
         make_tarball(stage, out)
         print(f"Wrote bundle: {out}")
@@ -188,4 +225,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
