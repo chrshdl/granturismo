@@ -52,10 +52,12 @@ class Feed(object):
 
         # setup signal handlers so we can make sure we close the socket and kill daemon threads properly
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGQUIT, signal.SIGABRT):
+            original_handler = signal.getsignal(sig)
 
-            def kill(*args):
+            def kill(*args, orig=original_handler):
                 self._terminate_event.set()
-                signal.getsignal(sig)()
+                if callable(orig):
+                    orig(*args)
 
             signal.signal(sig, kill)
 
