@@ -74,7 +74,7 @@ def main(argv=None) -> int:
             line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
             sock.sendto(line, (host, port))
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
         try:

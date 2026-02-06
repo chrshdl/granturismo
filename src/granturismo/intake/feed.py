@@ -202,6 +202,9 @@ class Feed(object):
             except OSError:
                 # Socket was closed during shutdown
                 break
+            except Exception:
+                # Decryption or packet parsing error - ignore and continue
+                continue
 
     def _send_heartbeat(self) -> None:
         backoff = 0.5
@@ -241,6 +244,9 @@ class Feed(object):
         )  # UDP
         # Enable immediate reuse of IP address
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Enable port reuse (Linux) to allow immediate restart
+        if hasattr(socket, 'SO_REUSEPORT'):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         # Set timeout so recvfrom doesn't block forever during shutdown
         sock.settimeout(1.0)
         # Bind the socket to the port
