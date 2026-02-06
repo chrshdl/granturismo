@@ -101,8 +101,20 @@ class Feed(object):
         :return: None
         """
         self._terminate_event.set()
+        
+        # Close socket first to unblock recvfrom() in receiver thread
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+        self._sock_bounded = False
+        
+        # Join both threads
         if self._heartbeat_thread.is_alive():
-            self._heartbeat_thread.join()
+            self._heartbeat_thread.join(timeout=2.0)
+        if self._receiver_thread.is_alive():
+            self._receiver_thread.join(timeout=2.0)
 
     def get(self) -> Packet:
         """
@@ -129,13 +141,15 @@ class Feed(object):
         Wait (with timeout) for at least one packet,
         then empty the queue and return the most recent one.
         """
+        if self._terminate_event.is_set():
+            return None
         if not self._sock_bounded:
             raise SocketNotBoundError(
                 "Not started. Call `.start` or `with Feed(your_ip_addr)` before calling `.get_latest`"
             )
         try:
             if timeout is None:
-                pkt = self._packet_queue.get(block=True)
+                pkt = self._packet_queue.get(block=True, timeout=1.0)
             else:
                 pkt = self._packet_queue.get(block=True, timeout=timeout)
         except Empty:
@@ -165,26 +179,9 @@ class Feed(object):
             self._packet_lock.release()
 
     def _get(self) -> None:
-        error_count = 0
         while not self._terminate_event.is_set():
             try:
                 data, _ = self._sock.recvfrom(Feed._BUFFER_LEN)
-
-                # # measure how many packets in last 20 ms
-                # now_mono = time.monotonic()
-                # self._recv_times.append(now_mono)
-
-                # window = 0.020
-                # while self._recv_times and now_mono - self._recv_times[0] > window:
-                #     self._recv_times.popleft()
-
-                # packets_last_20ms = len(self._recv_times)
-
-                # # log every 0.5 s
-                # if now_mono - self._last_log >= 0.5:
-                #     print(f"≈{packets_last_20ms} packets in the last 20 ms")
-                #     self._last_log = now_mono
-                # # end measurement
 
                 received_time = time.time()
                 if self._terminate_event.is_set():
@@ -201,12 +198,12 @@ class Feed(object):
                     self._packet_queue.put_nowait(packet)
                 finally:
                     self._packet_lock.release()
-                error_count = 0
-            except Exception:
-                error_count += 1
-                if error_count > 5:
-                    # small backoff if repeatedly erroring
-                    time.sleep(0.1)
+            except socket.timeout:
+                # Timeout allows us to check terminate_event periodically
+                continue
+            except OSError:
+                # Socket was closed during shutdown
+                break
 
     def _send_heartbeat(self) -> None:
         backoff = 0.5
@@ -237,9 +234,6 @@ class Feed(object):
 
                 backoff = min(backoff * 2.0, backoff_max)
 
-        self._sock.close()
-        self._sock_bounded = False
-
     @staticmethod
     def _init_sock_() -> socket.socket:
         # Create a datagram socket
@@ -249,8 +243,8 @@ class Feed(object):
         )  # UDP
         # Enable immediate reuse of IP address
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # check terminate_event every 5 seconds
-        # sock.settimeout(5.0)
+        # Set timeout so recvfrom doesn't block forever during shutdown
+        sock.settimeout(1.0)
         # Bind the socket to the port
         sock.bind(("", Feed._BIND_PORT))
 
