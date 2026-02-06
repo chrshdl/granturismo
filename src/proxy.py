@@ -55,11 +55,13 @@ def main(argv=None) -> int:
         return 2
 
     host, port = parse_udp_url(args.jsonl_output)
+    print(f"[Proxy] Starting, will send to {host}:{port}", flush=True)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     feed = Feed(args.ps_ip)
     feed.start()
+    send_count = 0
     try:
         while True:
             pkt = feed.get_latest(timeout=0.02)
@@ -73,6 +75,11 @@ def main(argv=None) -> int:
 
             line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
             sock.sendto(line, (host, port))
+            send_count += 1
+            if send_count == 1:
+                print(f"[Proxy] First packet sent to {host}:{port}", flush=True)
+            elif send_count % 1000 == 0:
+                print(f"[Proxy] Sent {send_count} packets", flush=True)
 
     except (KeyboardInterrupt, SystemExit):
         pass
