@@ -86,6 +86,7 @@ class Feed(object):
         self._sock = self._init_sock_()
         self._sock_bounded = True
         self._decrypter = Decrypter()
+        print(f"[Feed] Started, bound to port {Feed._BIND_PORT}, sending heartbeats to {self._addr}:{Feed._HEARTBEAT_PORT}")
 
         # start heartbeat thread
         self._heartbeat_thread.start()
@@ -177,9 +178,10 @@ class Feed(object):
             self._packet_lock.release()
 
     def _get(self) -> None:
+        pkt_count = 0
         while not self._terminate_event.is_set():
             try:
-                data, _ = self._sock.recvfrom(Feed._BUFFER_LEN)
+                data, addr = self._sock.recvfrom(Feed._BUFFER_LEN)
 
                 received_time = time.time()
                 if self._terminate_event.is_set():
@@ -187,6 +189,12 @@ class Feed(object):
 
                 data = self._decrypter.decrypt(data)
                 packet = Packet.from_bytes(data, received_time)
+
+                pkt_count += 1
+                if pkt_count == 1:
+                    print(f"[Feed] First packet received from {addr}")
+                elif pkt_count % 1000 == 0:
+                    print(f"[Feed] Received {pkt_count} packets")
 
                 self._packet_lock.acquire()
                 try:
@@ -199,23 +207,29 @@ class Feed(object):
             except socket.timeout:
                 # Timeout allows us to check terminate_event periodically
                 continue
-            except OSError:
+            except OSError as e:
                 # Socket was closed during shutdown
+                print(f"[Feed] Receiver OSError: {e}")
                 break
-            except Exception:
+            except Exception as e:
                 # Decryption or packet parsing error - ignore and continue
+                print(f"[Feed] Packet error: {e}")
                 continue
 
     def _send_heartbeat(self) -> None:
         backoff = 0.5
         backoff_max = 30.0
         next_log = 0.0
+        hb_count = 0
 
         while not self._terminate_event.is_set():
             try:
                 self._sock.sendto(
                     self._HEARTBEAT_MESSAGE, (self._addr, self._HEARTBEAT_PORT)
                 )
+                hb_count += 1
+                if hb_count == 1:
+                    print(f"[Feed] First heartbeat sent to {self._addr}:{self._HEARTBEAT_PORT}")
                 backoff = 0.5
                 self._terminate_event.wait(self._HEARTBEAT_DELAY)
 
