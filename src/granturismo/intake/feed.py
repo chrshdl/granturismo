@@ -86,7 +86,7 @@ class Feed(object):
         self._sock = self._init_sock_()
         self._sock_bounded = True
         self._decrypter = Decrypter()
-        print(f"[Feed] Started, bound to port {Feed._BIND_PORT}, sending heartbeats to {self._addr}:{Feed._HEARTBEAT_PORT}")
+        print(f"[Feed] Started, bound to port {Feed._BIND_PORT}, sending heartbeats to {self._addr}:{Feed._HEARTBEAT_PORT}", flush=True)
 
         # start heartbeat thread
         self._heartbeat_thread.start()
@@ -192,9 +192,9 @@ class Feed(object):
 
                 pkt_count += 1
                 if pkt_count == 1:
-                    print(f"[Feed] First packet received from {addr}")
+                    print(f"[Feed] First packet received from {addr}", flush=True)
                 elif pkt_count % 1000 == 0:
-                    print(f"[Feed] Received {pkt_count} packets")
+                    print(f"[Feed] Received {pkt_count} packets", flush=True)
 
                 self._packet_lock.acquire()
                 try:
@@ -209,11 +209,11 @@ class Feed(object):
                 continue
             except OSError as e:
                 # Socket was closed during shutdown
-                print(f"[Feed] Receiver OSError: {e}")
+                print(f"[Feed] Receiver OSError: {e}", flush=True)
                 break
             except Exception as e:
                 # Decryption or packet parsing error - ignore and continue
-                print(f"[Feed] Packet error: {e}")
+                print(f"[Feed] Packet error: {e}", flush=True)
                 continue
 
     def _send_heartbeat(self) -> None:
@@ -229,7 +229,7 @@ class Feed(object):
                 )
                 hb_count += 1
                 if hb_count == 1:
-                    print(f"[Feed] First heartbeat sent to {self._addr}:{self._HEARTBEAT_PORT}")
+                    print(f"[Feed] First heartbeat sent to {self._addr}:{self._HEARTBEAT_PORT}", flush=True)
                 backoff = 0.5
                 self._terminate_event.wait(self._HEARTBEAT_DELAY)
 
