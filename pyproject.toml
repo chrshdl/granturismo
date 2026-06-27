@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "granturismo"
-version = "0.3.13"
+version = "0.3.14"
 description = "Read Gran Turismo 7 telemetry data from a PlayStation over UDP"
 readme = "README.md"
 requires-python = ">=3.12"
