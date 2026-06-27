@@ -1,0 +1,26 @@
+# vscode stuff
+.vscode/
+
+# intelliJ stuff
+.idea/
+*.iml
+
+# python specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# testing
+.pytest_cache/
+.pytest*
+.coverage
+
+# packaging
+venv/
+documentation/
+
+# other
+data/
+build/
+dist/
+**/.DS_Store

@@ -1,0 +1,77 @@
+name: Build self-contained tarball
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Show versions
+        run: |
+          python -V
+          uv --version
+
+      - name: Build self-contained tarball (uv)
+        run: |
+          mkdir -p dist
+          python scripts/build_tarball.py --lib-root . --output dist/granturismo-selfcontained.tar.gz
+          ver=$(git describe --tags --always)
+          ver=${ver#v}
+          mv dist/granturismo-selfcontained.tar.gz dist/granturismo-selfcontained-$ver.tar.gz
+          ( cd dist && sha256sum "granturismo-selfcontained-$ver.tar.gz" > "granturismo-selfcontained-$ver.tar.gz.sha256" )
+
+      - name: Sign tarball (Ed25519)
+        # Activates automatically once the GT_SIGNING_KEY secret is set; until
+        # then the step is skipped so unsigned builds still succeed.
+        env:
+          GT_SIGNING_KEY: ${{ secrets.GT_SIGNING_KEY }}
+        if: env.GT_SIGNING_KEY != ''
+        run: |
+          python -m pip install --quiet cryptography
+          ver=$(git describe --tags --always); ver=${ver#v}
+          python scripts/sign_artifact.py "dist/granturismo-selfcontained-$ver.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: granturismo-selfcontained
+          path: dist/granturismo-selfcontained-*.tar.gz*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: granturismo-selfcontained
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/granturismo-selfcontained-*.tar.gz*
+

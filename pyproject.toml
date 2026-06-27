@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "granturismo"
+version = "0.3.14"
+description = "Read Gran Turismo 7 telemetry data from a PlayStation over UDP"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "chrshdl" }]
+keywords = ["gran-turismo", "gt7", "telemetry", "playstation", "udp"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment :: Simulation",
+]
+# No third-party runtime dependencies: the package is pure standard library.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "matplotlib",
+]
+
+[project.urls]
+"Source" = "https://github.com/chrshdl/granturismo"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["granturismo*"]
+
+[tool.pytest.ini_options]
+addopts = "--verbose"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/granturismo"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
