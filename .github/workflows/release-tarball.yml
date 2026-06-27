@@ -38,12 +38,13 @@ jobs:
           ver=$(git describe --tags --always)
           ver=${ver#v}
           mv dist/granturismo-selfcontained.tar.gz dist/granturismo-selfcontained-$ver.tar.gz
+          ( cd dist && sha256sum "granturismo-selfcontained-$ver.tar.gz" > "granturismo-selfcontained-$ver.tar.gz.sha256" )
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: granturismo-selfcontained
-          path: dist/granturismo-selfcontained-*.tar.gz
+          path: dist/granturismo-selfcontained-*.tar.gz*
 
   release:
     needs: build
@@ -61,5 +62,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/granturismo-selfcontained-*.tar.gz
+          files: dist/granturismo-selfcontained-*.tar.gz*
 
