@@ -1,133 +1,98 @@
-from granturismo.model.common import *
-from granturismo.model import Packet
+"""Helpers for building synthetic telemetry buffers in tests."""
+
+from __future__ import annotations
+
+import struct
+
+from granturismo.security import salsa20
+from granturismo.security.decrypter import _KEY, _NONCE_MASK, _SEED_OFFSET
+
+PACKET_LEN = 0x128  # 296 bytes
 
 
-def vector2dict(v: Vector) -> dict:
-  return {
-    'x': v.x,
-    'y': v.y,
-    'z': v.z
-  }
+def encrypt_packet(plaintext: bytes, seed: int = 0x0BADC0DE) -> bytes:
+    """Encrypt ``plaintext`` the way the console does, decryptable by Decrypter.
+
+    The decrypter reads its nonce seed from offset 0x40 of the *encrypted*
+    bytes, so we stash the seed there.  Offset 0x40 falls in a region the
+    packet parser ignores, leaving all decoded fields untouched.
+    """
+    nonce = (seed ^ _NONCE_MASK).to_bytes(4, "little") + seed.to_bytes(4, "little")
+    keystream = salsa20.xor(bytes(len(plaintext)), nonce, _KEY)
+    buf = bytearray(plaintext)
+    buf[_SEED_OFFSET:_SEED_OFFSET + 4] = bytes(
+        s ^ k for s, k in zip(seed.to_bytes(4, "little"),
+                              keystream[_SEED_OFFSET:_SEED_OFFSET + 4])
+    )
+    cipher = salsa20.xor(bytes(buf), nonce, _KEY)
+    assert cipher[_SEED_OFFSET:_SEED_OFFSET + 4] == seed.to_bytes(4, "little")
+    return cipher
 
 
-def dict2vector(d: dict) -> Vector:
-  return Vector(**d)
+def build_packet_buffer() -> bytearray:
+    """Return a 296-byte decrypted packet with known values at every offset.
 
+    The values chosen here are mirrored by the assertions in
+    ``tests/model/test_packet.py``; keep the two in sync.
+    """
+    b = bytearray(PACKET_LEN)
+    b[0:4] = b"0S7G"  # "G7S0" little-endian magic
 
-def wheel2dict(w: Wheel) -> dict:
-  return {
-    'suspension_height': w.suspension_height,
-    'radius': w.radius,
-    'rps': w.rps,
-    'ground_speed': w.ground_speed,
-    'temperature': w.temperature
-  }
+    def f32(off: float, val: float) -> None:
+        struct.pack_into("<f", b, off, val)
 
+    def u(off: int, size: int, val: int) -> None:
+        b[off:off + size] = val.to_bytes(size, "little")
 
-def dict2wheel(d: dict) -> Wheel:
-  return Wheel(**d)
+    # vectors / rotation / scalars
+    f32(4, 1.0); f32(8, 2.0); f32(12, 3.0)        # position
+    f32(16, 4.0); f32(20, 5.0); f32(24, 6.0)      # velocity
+    f32(28, 0.1); f32(32, 0.2); f32(36, 0.3)      # rotation
+    f32(40, 0.5)                                   # orientation
+    f32(44, 7.0); f32(48, 8.0); f32(52, 9.0)      # angular_velocity
+    f32(56, 0.25)                                  # body_height
+    f32(60, 5000.0)                                # engine_rpm
+    f32(68, 50.0); f32(72, 100.0)                  # gas level / capacity
+    f32(76, 55.5)                                  # car_speed
+    f32(80, 1.2)                                   # turbo_boost
+    f32(84, 5.0)                                   # oil_pressure
+    f32(88, 110.0); f32(92, 85.0)                  # water / oil temperature
 
+    # wheel surface temperatures
+    f32(96, 80.0); f32(100, 81.0); f32(104, 82.0); f32(108, 83.0)
 
-def flags2dict(f: Flags) -> dict:
-  return {
-    'car_on_track': f.car_on_track,
-    'paused': f.paused,
-    'loading_or_processing': f.loading_or_processing,
-    'in_gear': f.in_gear,
-    'has_turbo': f.has_turbo,
-    'rev_limiter_alert_active': f.rev_limiter_alert_active,
-    'hand_brake_active': f.hand_brake_active,
-    'lights_active': f.lights_active,
-    'lights_high_beams_active': f.lights_high_beams_active,
-    'lights_low_beams_active': f.lights_low_beams_active,
-    'asm_active': f.asm_active,
-    'tcs_active': f.tcs_active,
-    'unused1': f.unused1,
-    'unused2': f.unused2,
-    'unused3': f.unused3,
-    'unused4': f.unused4
-  }
+    u(112, 4, 12345)        # packet_id
+    u(116, 2, 2)            # lap_count
+    u(118, 2, 10)           # laps_in_race
+    u(120, 4, 90000)        # best_lap_time
+    u(124, 4, 95000)        # last_lap_time
+    u(128, 4, 3600000)      # time_of_day
+    u(132, 4, 0x35)         # race_state -> start_position=3, cars_in_race=0x35
+    u(136, 2, 7000)         # rpm_alert.min
+    u(138, 2, 8000)         # rpm_alert.max
+    u(140, 2, 300)          # car_max_speed
+    u(142, 2, 0b0000000000011001)  # flags: car_on_track, in_gear, has_turbo
+    u(144, 1, (4 << 4) | 3)  # gear byte: suggested=4, current=3
+    u(145, 1, 200)          # throttle
+    u(146, 1, 100)          # brake
+    u(147, 1, 0)            # unused_0x93
 
+    f32(148, 0.0); f32(152, 1.0); f32(156, 0.0)   # road_plane
+    f32(160, 0.25)                                 # road_distance
 
-def dict2flags(d: dict) -> Flags:
-  return Flags(**d)
+    # wheel rotation speed (rad/s), radius, suspension per corner
+    f32(164, 10.0); f32(168, 11.0); f32(172, 12.0); f32(176, 13.0)
+    f32(180, 0.30); f32(184, 0.31); f32(188, 0.32); f32(192, 0.33)
+    f32(196, 0.40); f32(200, 0.41); f32(204, 0.42); f32(208, 0.43)
 
+    f32(244, 0.9)           # clutch
+    f32(248, 0.8)           # clutch_engagement
+    f32(252, 4500.0)        # clutch_gearbox_rpm
+    f32(256, 2.5)           # transmission_max_speed
 
-def packet2dict(p: Packet) -> dict:
-  return {
-    'packet_id': p.packet_id,
-    'retrieved_time': p.received_time,
-    'car_id': p.car_id,
-    'lap_count': p.lap_count,
-    'laps_in_race': p.laps_in_race,
-    'best_lap_time': p.best_lap_time,
-    'last_lap_time': p.last_lap_time,
-    'position': vector2dict(p.position),
-    'velocity': vector2dict(p.velocity),
-    'angular_velocity': vector2dict(p.angular_velocity),
-    'rotation': {
-      'pitch': p.rotation.pitch,
-      'yaw': p.rotation.yaw,
-      'roll': p.rotation.roll
-    },
-    'road_plane': vector2dict(p.road_plane),
-    'road_distance': p.road_distance,
-    'wheels': {
-      'front_left': wheel2dict(p.wheels.front_left),
-      'front_right': wheel2dict(p.wheels.front_right),
-      'rear_left': wheel2dict(p.wheels.rear_left),
-      'rear_right': wheel2dict(p.wheels.rear_right)
-    },
-    'flags': flags2dict(p.flags),
-    'orientation': p.orientation,
-    'body_height': p.body_height,
-    'engine_rpm': p.engine_rpm,
-    'gas_level': p.gas_level,
-    'gas_capacity': p.gas_capacity,
-    'car_speed': p.car_speed,
-    'turbo_boost': p.turbo_boost,
-    'oil_pressure': p.oil_pressure,
-    'oil_temperature': p.oil_temperature,
-    'water_temperature': p.water_temperature,
-    'time_of_day': p.time_of_day,
-    'start_position': p.start_position,
-    'cars_in_race': p.cars_in_race,
-    'rpm_alert': {
-      'min': p.rpm_alert.min,
-      'max': p.rpm_alert.max
-    },
-    'car_max_speed': p.car_max_speed,
-    'transmission_max_speed': p.transmission_max_speed,
-    'throttle': p.throttle,
-    'brake': p.brake,
-    'clutch': p.clutch,
-    'clutch_engagement': p.clutch_engagement,
-    'clutch_gearbox_rpm': p.clutch_gearbox_rpm,
-    'current_gear': p.current_gear,
-    'suggested_gear': p.suggested_gear,
-    'gear_ratios': p.gear_ratios,
-    'unused_0x93': p.unused_0x93,
-    'unused_0xD4': p.unused_0xD4
-  }
+    # gear ratios: six real gears then zero terminator
+    for i, ratio in enumerate((3.5, 2.5, 1.8, 1.3, 1.0, 0.8)):
+        f32(260 + i * 4, ratio)
 
-
-def dict2packet(d: dict) -> Packet:
-  d['position'] = dict2vector(d['position'])
-  d['velocity'] = dict2vector(d['velocity'])
-  d['angular_velocity'] = dict2vector(d['angular_velocity'])
-  d['road_plane'] = dict2vector(d['road_plane'])
-  d['rotation'] = Rotation(
-    pitch=d['rotation']['pitch'],
-    yaw=d['rotation']['yaw'],
-    roll=d['rotation']['roll'])
-  d['rpm_alert'] = Bounds(
-    min=d['rpm_alert']['min'],
-    max=d['rpm_alert']['max'])
-  d['wheels'] = Wheels(
-    front_left=dict2wheel(d['wheels']['front_left']),
-    front_right=dict2wheel(d['wheels']['front_right']),
-    rear_left=dict2wheel(d['wheels']['rear_left']),
-    rear_right=dict2wheel(d['wheels']['rear_right']))
-  d['flags'] = dict2flags(d['flags'])
-
-  return Packet(**d)
+    u(292, 4, 42)           # car_id
+    return b

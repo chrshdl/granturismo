@@ -1,3 +1,5 @@
-salsa20
-marshmallow-dataclass
-marshmallow-enum
+
+[dev]
+pytest
+pytest-cov
+matplotlib

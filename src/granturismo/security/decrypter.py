@@ -1,20 +1,32 @@
-from salsa20 import Salsa20_xor
-from granturismo.utils import ntoh
+"""Decryption of Gran Turismo 7 telemetry datagrams.
 
-# https://github.com/Nenkai/PDTools/blob/85f11a67489346c62273ca2f70708b4ed3b44279/PDTools.Crypto/SimulationInterface/SimulatorInterfaceCryptorGT7.cs#L15
-class Decrypter(object):
-  _KEY = b'Simulator Interface Packet GT7 v' #er 0.0 ... we only need 32-bits
-  _BYTE_ORDER = 'little'
-  _IV_MASK = 0xDEADBEAF
-  _GT7_ID = 0x47375330
+GT7 obfuscates each UDP packet with Salsa20.  The 32-byte key is a fixed
+ASCII string baked into the game; the 8-byte nonce is derived per packet from
+a 32-bit seed stored at byte offset 0x40 of the *encrypted* payload.  These
+facts come from the public reverse-engineering of the protocol (see the
+project README for attribution) and are reimplemented here from scratch.
+"""
 
-  @staticmethod
-  def decrypt(buffer: bytearray) -> bytearray:
-    iv1 = int.from_bytes(ntoh(buffer[64:68]), byteorder=Decrypter._BYTE_ORDER)
-    iv2 = iv1 ^ Decrypter._IV_MASK
+from __future__ import annotations
 
-    iv = bytearray()
-    iv.extend(iv2.to_bytes(4, Decrypter._BYTE_ORDER))
-    iv.extend(iv1.to_bytes(4, Decrypter._BYTE_ORDER))
+from granturismo.security import salsa20
 
-    return Salsa20_xor(bytes(buffer), bytes(iv), Decrypter._KEY)
+# First 32 bytes of the game's "Simulator Interface Packet GT7 ver 0.0" string.
+_KEY = b"Simulator Interface Packet GT7 v"
+
+# The seed lives at this offset in the encrypted packet ...
+_SEED_OFFSET = 0x40
+# ... and the second nonce word is the seed XOR'd with this constant.
+_NONCE_MASK = 0xDEADBEAF
+
+
+class Decrypter:
+    """Stateless decrypter for GT7 telemetry packets."""
+
+    @staticmethod
+    def decrypt(buffer: bytes) -> bytes:
+        """Return the plaintext telemetry packet for an encrypted ``buffer``."""
+        seed = int.from_bytes(buffer[_SEED_OFFSET:_SEED_OFFSET + 4], "little")
+        nonce = ((seed ^ _NONCE_MASK).to_bytes(4, "little")
+                 + seed.to_bytes(4, "little"))
+        return salsa20.xor(bytes(buffer), nonce, _KEY)

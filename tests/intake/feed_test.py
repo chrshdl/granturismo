@@ -1,88 +1,58 @@
-import json
-import queue
-import threading
+import socket
+import struct
 
-from granturismo.model.packet import Packet
+import pytest
+
 from granturismo import Feed
-from tests.helpers import dict2packet, packet2dict
-from tests.test_base import TestBase
-from unittest.mock import patch, MagicMock
-from threading import Event
-from queue import Queue
-import sure, time
+from granturismo.intake.feed import SocketNotBoundError
+from tests.helpers import build_packet_buffer, encrypt_packet
 
 
-ROOT_DIR = 'granturismo.intake.feed'
+def _send(cipher: bytes) -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(cipher, ("127.0.0.1", Feed.BIND_PORT))
 
-class SessionTest(TestBase):
-  mock_packets: [dict] = None
 
-  def get_mock_packets(self) -> [Packet]:
-    if self.mock_packets is None:
-      with open(self._settings.project_directory().joinpath('tests', 'data', 'mock_packet_stream.json')) as f:
-        packets = json.load(f)
-        for i, p in enumerate(packets):
-          p['received_time'] = i
-          packets[i] = dict2packet(p)
-        self.mock_packets = packets
+def test_get_before_start_raises():
+    feed = Feed("127.0.0.1")
+    with pytest.raises(SocketNotBoundError):
+        feed.get_latest(timeout=0)
 
-    return self.mock_packets
 
-  @patch(f'{ROOT_DIR}.socket.socket', name='socket')
-  @patch(f'{ROOT_DIR}.Decrypter', name='Decrypter')
-  @patch(f'{ROOT_DIR}.Packet', name='Packet')
-  def test_session_successfully_streams(self, *mocks):
-    packets = self.get_mock_packets()
-    mocks = self.unpack_mocks(*mocks)
-    socket = MagicMock(name='socket_object')
-    decrypter = MagicMock(name='decrypter')
-    decrypter.decrypt.return_value = b'fake decrypted value'
-    mocks['socket'].return_value = socket
-    mocks['Decrypter'].return_value = decrypter
-    mocks['Packet'].from_bytes.side_effect = packets
+def test_receives_and_decodes_a_packet():
+    with Feed("127.0.0.1") as feed:
+        _send(encrypt_packet(bytes(build_packet_buffer())))
+        packet = feed.get_latest(timeout=2.0)
+        assert packet is not None
+        assert packet.packet_id == 12345
+        assert packet.car_id == 42
 
-    e = Event()
-    q = Queue()
 
-    def recvfrom(buffer_len: int):
-      while not e.is_set():
-        try:
-          value = q.get(timeout=0.1)
-          return value
-        except queue.Empty:
-          continue
-      return (b'end', None)
+def test_latest_wins_keeps_only_freshest():
+    with Feed("127.0.0.1") as feed:
+        # send three packets with ascending packet_ids in quick succession
+        for pid in (100, 200, 300):
+            buf = build_packet_buffer()
+            struct.pack_into("<I", buf, 112, pid)
+            _send(encrypt_packet(bytes(buf)))
+        # drain to the newest; allow a moment for all to arrive
+        latest = None
+        for _ in range(50):
+            pkt = feed.get_latest(timeout=0.1)
+            if pkt is not None:
+                latest = pkt
+        assert latest is not None
+        assert latest.packet_id == 300
 
-    # mock = MagicMock(name='tuna')
-    # mock.recvfrom = MagicMock(name='fish', return_value=('Hello world!', None))
-    socket.recvfrom = recvfrom #Mock(name='recvfrom', return_value=(b'0', None))
 
-    sut = Feed('127.0.0.1').start()
+def test_get_nowait_returns_none_when_idle():
+    with Feed("127.0.0.1") as feed:
+        assert feed.get_nowait() is None
 
-    try:
-      q.put_nowait((f'fake buffer 1', None))
-      time.sleep(0.015)
-      actual = packet2dict(sut.get())
-      actual.should.eql(packet2dict(packets[0]))
 
-      q.put_nowait((f'fake buffer 2', None))
-      time.sleep(0.015)
-      actual = packet2dict(sut.get())
-      actual.should.eql(packet2dict(packets[1]))
-
-      for i in range(3, 7):
-        q.put_nowait((f'fake buffer {i}', None))
-        time.sleep(0.015)
-      actual = packet2dict(sut.get())
-      actual.should.eql(packet2dict(packets[5]))
-
-    finally:
-      sock = sut._sock
-      sut.close()
-      e.set()
-
-    calls = dict(map(lambda x: (x[0], (x[1], x[2])), sock.method_calls))
-    calls['setsockopt'].should.eql( ((65535, 4, 1), {}) )
-    calls['bind'].should.eql( ((('', 33740),), {}) )
-    calls['sendto'].should.eql( ((b'A', ('127.0.0.1', 33739)), {}) )
-    calls['close'].should.eql( ((), {}))
+def test_garbage_datagram_is_ignored():
+    with Feed("127.0.0.1") as feed:
+        _send(b"not a valid packet")          # undecryptable / wrong length
+        assert feed.get_latest(timeout=0.3) is None
+        _send(encrypt_packet(bytes(build_packet_buffer())))
+        assert feed.get_latest(timeout=2.0) is not None

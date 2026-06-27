@@ -1,19 +1,22 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: granturismo
-Version: 0.1.1
-Summary: Get Grand Turismo telemetry data from the PlayStation console
-Author: Lucas Pettit
-Author-email: lucaspettit64@gmail.com
+Version: 0.3.12
+Summary: Read Gran Turismo 7 telemetry data from a PlayStation over UDP
+Author: chrshdl
 License: MIT
-Project-URL: Bug Tracker, https://github.com/lucaspettit/telempy/issues
-Project-URL: Source Code, https://github.com/lucaspettit/telempy
-Platform: Windows
-Platform: Linux
-Platform: Solaris
-Platform: Mac OS-X
-Platform: Unix
-Requires-Python: >=3.7
+Project-URL: Source, https://github.com/chrshdl/granturismo
+Keywords: gran-turismo,gt7,telemetry,playstation,udp
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Games/Entertainment :: Simulation
+Requires-Python: >=3.12
 Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+Dynamic: license-file
 
 # GranTurismo
 This package wraps the Gran Turismo 7's unofficial telemetry API. By providing this module with you're PlayStation's IP address (as found in the menu) you will be able to retrieve packets containing telemetry data. 
@@ -80,7 +83,7 @@ if __name__ == '__main__':
     feed.close()
 ```
 
-###Streaming position data directly to a plot
+### Streaming position data directly to a plot
 Stream the car's position directly to a plot window. Here we'll plot the x and z axis, which track the horizontal plane. We also add a "heatmap" color to the plot to show the car's speed compared to it's max potential speed.</br>
 You can run this by calling `python3 examples/stream_position.py <your PS's IP address>` 
 ```python

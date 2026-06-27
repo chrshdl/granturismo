@@ -1,50 +1,46 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel>=0.37.0"
-]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "granturismo"
-version = "0.3.0"
-description = "Tools to get Grand Turismo telemetry data from PlayStation"
+version = "0.3.13"
+description = "Read Gran Turismo 7 telemetry data from a PlayStation over UDP"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    # Direct dependencies
-    "salsa20 @ git+https://github.com/chrshdl/python-salsa20.git@bd496e0",
-    "marshmallow-dataclass",
-    "marshmallow-enum",
-    "typeguard"
+license = { text = "MIT" }
+authors = [{ name = "chrshdl" }]
+keywords = ["gran-turismo", "gt7", "telemetry", "playstation", "udp"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment :: Simulation",
 ]
+# No third-party runtime dependencies: the package is pure standard library.
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
-    "sure",
-    "unittest",
+    "pytest",
     "pytest-cov",
-    "pylint-fail-under",
-    "matplotlib"
+    "matplotlib",
 ]
 
-[tool.cibuildwheel]
-skip = "cp36-* cp37-* pp37-* *-manylinux_i686 *_ppc64le *_s390x *-musllinux*"
-build-verbosity = "3"
+[project.urls]
+"Source" = "https://github.com/chrshdl/granturismo"
 
-[tool.cibuildwheel.linux]
-manylinux-x86_64-image = "manylinux2014"
-manylinux-aarch64-image = "manylinux2014"
-environment = { CFLAGS="-std=c99 -fno-strict-aliasing", LDFLAGS="-Wl,--strip-debug", OPENBLAS64_="/usr/local", NPY_USE_BLAS_ILP64="1", RUNNER_OS="Linux" }
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["granturismo*"]
 
-[tool.cibuildwheel.macos]
-archs = "x86_64 arm64"
-test-skip = "*_arm64 *_universal2:arm64"
-environment = { CFLAGS="-std=c99 -fno-strict-aliasing", OPENBLAS64_="/usr/local", NPY_USE_BLAS_ILP64="1", CC="clang", CXX="clang++" }
+[tool.pytest.ini_options]
+addopts = "--verbose"
+testpaths = ["tests"]
 
-[tool.cibuildwheel.windows]
-environment = { OPENBLAS64_="openblas", OPENBLAS="", NPY_USE_BLAS_ILP64="1", CFLAGS="", LDFLAGS="" }
+[tool.coverage.run]
+branch = true
+source = ["src/granturismo"]
+omit = ["*/__init__.py"]
 
-[[tool.cibuildwheel.overrides]]
-select = "*-win32"
-environment = { OPENBLAS64_="", OPENBLAS="openblas", NPY_USE_BLAS_ILP64="0", CFLAGS="-m32", LDFLAGS="-m32" }
+[tool.coverage.report]
+show_missing = true

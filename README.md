@@ -1,9 +1,21 @@
 # GranTurismo
-This package wraps the Gran Turismo 7's unofficial telemetry API. By providing this module with you're PlayStation's IP address (as found in the menu) you will be able to retrieve packets containing telemetry data. 
+This package reads Gran Turismo 7's unofficial UDP telemetry stream. Give it your
+PlayStation's IP address (found in the console's network menu) and it will hand you
+decoded packets of telemetry data.
+
+It is a pure-Python implementation with **no third-party runtime dependencies** and is
+released under the [MIT License](LICENSE).
 
 ## Usage
-The main function is the Listener, which is a closing object. You can use a `with Listener(ip_address) as ...` clause to open and close the listener. 
-The Listener will spin up a background thread to maintain a heartbeat connection with the PlayStation, so it's important to always close the object.
+The entry point is `Feed`, a context manager. Use `with Feed(ip_address) as feed:` to open
+and close it. `Feed` spins up background threads that maintain a heartbeat to the
+PlayStation (the console only streams while it keeps receiving heartbeats) and decode
+incoming packets, so always close it when you're done.
+
+Three ways to read packets:
+* `feed.get()` — block until a packet is available and return the most recent one.
+* `feed.get_latest(timeout)` — wait up to `timeout` seconds for a fresh packet; returns `None` on timeout.
+* `feed.get_nowait()` — return the freshest packet if one has arrived, else `None`.
 
 ### Quickstart example
 Grab a single packet from GranTurismo and print it. </br>
@@ -15,7 +27,7 @@ import sys
 if __name__ == '__main__':
   ip_address = sys.argv[1] # IP address to the PlayStation
   
-  # Create a new Listener session and print the first packet that Gran Turismo sends.
+  # Open a feed and print the first packet that Gran Turismo sends.
   with Feed(ip_address) as feed:
     print(feed.get())
 ```
@@ -43,20 +55,22 @@ def report_suspension(wheels: Wheels) -> None:
 if __name__ == '__main__':
   ip_address = sys.argv[1]
 
-  # To use the Listener session without a `with` clause, you'll need to call the `.start()` function. 
+  # To use the feed without a `with` clause, call `.start()` yourself.
   feed = Feed(ip_address)
   feed.start()
 
   try:
     while True:
-      # get the latest packet from PlayStation
-      packet = feed.get()
+      # wait up to a second for the latest packet from the PlayStation
+      packet = feed.get_latest(timeout=1.0)
+      if packet is None:
+        continue
 
       # If the game isn't paused or in a loading state, we'll update the terminal with the latest suspension info.
       if not packet.flags.loading_or_processing and not packet.flags.paused:
         report_suspension(packet.wheels)
   finally:
-    # If you don't use a `with` clause, then you'll need to close the session afterwords. Session will also successfully close with CTRL+C
+    # Without a `with` clause you must close the feed yourself.
     curses.echo()
     curses.nocbreak()
     curses.endwin()
@@ -174,7 +188,7 @@ Because this is an unofficial API, the range expected min/max of each value is s
        * float: `ground_speed`: The speed the tire is traveling on the ground in meters per second.
        * float: `temperature`: The surface temperature of the tire in celsius 
 *  Flags: `flags`
-   * bool: `in_race`
+   * bool: `car_on_track`
    * bool: `paused` 
    * bool: `loading_or_processing` 
    * bool: `in_gear` 0 when shifting or out of gear, standing 
@@ -219,7 +233,17 @@ Because this is an unofficial API, the range expected min/max of each value is s
 *  int: `unused_0x93` always 0
 *  int: `unused_0xD4` always 0
 
-## References
-[Nenkai](https://github.com/Nenkai) is the original discoverer of this API and how to decrypt and communicate with it, as well as a significant amount of research into each value.
+## Self-contained bundle
+`python scripts/build_tarball.py --lib-root . --output dist/granturismo-selfcontained.tar.gz`
+produces an architecture-independent tarball (`proxy-wrapper.py` + the `granturismo`
+package, including the UDP→NDJSON `proxy.py`). Because the library is pure standard
+library, the bundle vendors no third-party packages and runs on a stock `python3`.
 
-[tarnheld](https://www.gtplanet.net/forum/threads/gt7-is-compatible-with-motion-rig.410728/page-4) for their work in identifying data values/ranges. 
+## References
+The GT7 telemetry wire format documented here is the result of community
+reverse-engineering; this project is an independent implementation of it.
+
+[Nenkai](https://github.com/Nenkai) originally discovered this interface — how to
+decrypt and communicate with it — and did extensive research into each value.
+
+[tarnheld](https://www.gtplanet.net/forum/threads/gt7-is-compatible-with-motion-rig.410728/page-4) for their work in identifying data values/ranges.

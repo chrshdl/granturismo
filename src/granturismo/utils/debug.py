@@ -1,37 +1,23 @@
+"""Small helpers for inspecting raw telemetry bytes during development."""
+
+from __future__ import annotations
+
 import struct
 
-def to_bit_str(b: [bytes, bytearray, int, str]) -> str:
-  if isinstance(b, float):
-    b = bytes(struct.pack("f", b))
-  if isinstance(b, bytearray):
-    b = bytes(b)
 
-  if isinstance(b, bytes):
-    s = []
-    for c in b:
-      s.append(_format(bin(c)))
-    return ' '.join(s)
-  if isinstance(b, int):
-    return _format(bin(b))
-  if isinstance(b, str):
-    s = []
-    for c in b:
-      s.append(_format(bin(ord(c))))
-    return ' '.join(s)
+def to_bit_str(value) -> str:
+    """Render ``value`` as space-separated 8-bit groups, MSB first.
 
-
-def _format(s: str) -> str:
-  if len(s) >= 2 and s[1] == 'b':
-    s = s[2:]
-  remainder = len(s) % 8
-  remainder = 0 if remainder == 0 else 8 - remainder
-  s = ('0' * remainder) + s
-
-  for i in range(len(s) - 8, 0, -8):
-    s = s[:i] + ' ' + s[i:]
-
-  return s
-
-
-if __name__ == '__main__':
-  print(to_bit_str(b'\xb1\xdf\x0b\xe9\xb0\xcc\xf8\xa5q'))
+    Accepts bytes/bytearray, an int, a float (packed as a 32-bit float), or a
+    str (each character's code point).
+    """
+    if isinstance(value, float):
+        value = struct.pack("f", value)
+    if isinstance(value, str):
+        value = value.encode("latin-1")
+    if isinstance(value, (bytes, bytearray)):
+        return " ".join(f"{byte:08b}" for byte in value)
+    if isinstance(value, int):
+        width = max(8, (value.bit_length() + 7) // 8 * 8)
+        return format(value, f"0{width}b")
+    raise TypeError(f"unsupported type: {type(value).__name__}")

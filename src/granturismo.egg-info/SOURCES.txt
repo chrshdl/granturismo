@@ -1,15 +1,10 @@
+LICENSE
 README.md
 pyproject.toml
-setup.cfg
-setup.py
-examples/quickstart.py
-examples/stream_position.py
-examples/stream_suspension.py
 src/granturismo/__init__.py
 src/granturismo.egg-info/PKG-INFO
 src/granturismo.egg-info/SOURCES.txt
 src/granturismo.egg-info/dependency_links.txt
-src/granturismo.egg-info/not-zip-safe
 src/granturismo.egg-info/requires.txt
 src/granturismo.egg-info/top_level.txt
 src/granturismo/intake/__init__.py
@@ -21,7 +16,6 @@ src/granturismo/model/common.py
 src/granturismo/model/packet.py
 src/granturismo/security/__init__.py
 src/granturismo/security/decrypter.py
+src/granturismo/security/salsa20.py
 src/granturismo/utils/__init__.py
 src/granturismo/utils/debug.py
-src/granturismo/utils/network_to_host.py
-src/granturismo/utils/settings.py
