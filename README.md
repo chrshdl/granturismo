@@ -16,6 +16,23 @@ state, never a queue backlog.
 Always close the feed when you're done (use it as a context manager, or call
 `.close()` explicitly), otherwise the console keeps streaming indefinitely.
 
+```mermaid
+flowchart LR
+    GT7["Gran Turismo 7<br/>(PS5)"]
+
+    subgraph lib["granturismo"]
+        direction TB
+        FEED["Feed<br/>heartbeat · Salsa20 decrypt"]
+        MAIL["mailbox<br/>(latest wins)"]
+        PROXY["proxy.py<br/>Packet → NDJSON"]
+        FEED --> MAIL --> PROXY
+    end
+
+    GT7 -->|"Salsa20 · UDP :33740"| FEED
+    FEED -->|"heartbeat · UDP :33739"| GT7
+    PROXY -->|"NDJSON · UDP"| IC["<a href='https://github.com/chrshdl/instrument-cluster'>instrument-cluster</a><br/>TelemetrySource"]
+```
+
 ## Installation
 
 ```bash
