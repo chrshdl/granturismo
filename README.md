@@ -1,42 +1,82 @@
-# GranTurismo
-This package reads Gran Turismo 7's unofficial UDP telemetry stream. Give it your
-PlayStation's IP address (found in the console's network menu) and it will hand you
-decoded packets of telemetry data.
+# granturismo
 
-It is a pure-Python implementation with **no third-party runtime dependencies** and is
-released under the [MIT License](LICENSE).
+Pure-Python library for reading Gran Turismo 7's unofficial UDP telemetry stream.
+Point it at your PlayStation's IP address and it hands you a stream of decoded
+`Packet` objects.
 
-## Usage
-The entry point is `Feed`, a context manager. Use `with Feed(ip_address) as feed:` to open
-and close it. `Feed` spins up background threads that maintain a heartbeat to the
-PlayStation (the console only streams while it keeps receiving heartbeats) and decode
-incoming packets, so always close it when you're done.
+## How it works
 
-Three ways to read packets:
-* `feed.get()` — block until a packet is available and return the most recent one.
-* `feed.get_latest(timeout)` — wait up to `timeout` seconds for a fresh packet; returns `None` on timeout.
-* `feed.get_nowait()` — return the freshest packet if one has arrived, else `None`.
+GT7 only transmits telemetry while the client sends periodic heartbeat datagrams.
+`Feed` manages that for you: it opens a UDP socket, maintains the heartbeat in a
+background thread, decrypts each incoming packet (Salsa20/20, keys are
+community-derived), and publishes the result to a single-slot mailbox. Older
+packets are discarded in favour of the latest one — you always read the latest
+state, never a queue backlog.
 
-### Quickstart example
-Grab a single packet from GranTurismo and print it. </br>
-You can run this by calling `python3 examples/quickstart.py <your PS's IP address>`
+Always close the feed when you're done (use it as a context manager, or call
+`.close()` explicitly), otherwise the console keeps streaming indefinitely.
+
+## Installation
+
+```bash
+uv add git+https://github.com/chrshdl/granturismo.git
+```
+
+Or build the self-contained tarball for deployment (see [Bundle](#bundle) below).
+
+## Reading packets
+
 ```python
-from granturismo import Feed 
+from granturismo import Feed
+```
+
+Open a feed with the PlayStation's IP address:
+
+```python
+with Feed("192.168.1.x") as feed:
+    packet = feed.get()
+```
+
+Three access patterns are available:
+
+| Method | Behaviour |
+|---|---|
+| `feed.get()` | Block until a new packet arrives, return it. |
+| `feed.get_latest(timeout)` | Wait up to `timeout` seconds; return the packet or `None` on timeout. |
+| `feed.get_nowait()` | Return the most recent packet immediately, or `None` if none has arrived yet. |
+
+All three return `None` once the feed is closed.
+
+## Examples
+
+### Print a single packet
+
+```bash
+python3 examples/quickstart.py <PlayStation IP>
+```
+
+```python
+from granturismo import Feed
 import sys
 
 if __name__ == '__main__':
-  ip_address = sys.argv[1] # IP address to the PlayStation
-  
-  # Open a feed and print the first packet that Gran Turismo sends.
-  with Feed(ip_address) as feed:
-    print(feed.get())
+    ip_address = sys.argv[1]
+
+    with Feed(ip_address) as feed:
+        # get() blocks until the first telemetry packet arrives
+        print(feed.get())
 ```
 
-### Streaming suspension data to the console
-Stream all incoming data from Gran Turismo and print it to the terminal</br>
-You can run this by calling `python3 examples/stream_suspension.py <your PS's IP address>`
+### Live suspension heights in the terminal
+
+Uses `curses` to update a fixed region of the terminal in place.
+
+```bash
+python3 examples/stream_suspension.py <PlayStation IP>
+```
+
 ```python
-from granturismo import Feed 
+from granturismo import Feed
 from granturismo.model import Wheels
 import datetime as dt
 import time, sys
@@ -44,206 +84,102 @@ import curses
 
 stdscr = curses.initscr()
 
-# This function is used to rewrite multiple lines on the terminal
 def report_suspension(wheels: Wheels) -> None:
-  curr_time = dt.datetime.fromtimestamp(time.time()).isoformat()
-  stdscr.addstr(0, 0, f'[{curr_time}] Suspension Height')
-  stdscr.addstr(1, 0, f'\t{wheels.front_left.suspension_height:.3f}    {wheels.front_right.suspension_height:.3f}')
-  stdscr.addstr(2, 0, f'\t{wheels.rear_left.suspension_height:.3f}    {wheels.rear_right.suspension_height:.3f}')
-  stdscr.refresh()
+    curr_time = dt.datetime.fromtimestamp(time.time()).isoformat()
+    stdscr.addstr(0, 0, f'[{curr_time}] Suspension Height')
+    stdscr.addstr(1, 0, f'\t{wheels.front_left.suspension_height:.3f}    {wheels.front_right.suspension_height:.3f}')
+    stdscr.addstr(2, 0, f'\t{wheels.rear_left.suspension_height:.3f}    {wheels.rear_right.suspension_height:.3f}')
+    stdscr.refresh()
 
 if __name__ == '__main__':
-  ip_address = sys.argv[1]
+    ip_address = sys.argv[1]
 
-  # To use the feed without a `with` clause, call `.start()` yourself.
-  feed = Feed(ip_address)
-  feed.start()
+    # Without `with`, start and close the feed manually.
+    feed = Feed(ip_address)
+    feed.start()
 
-  try:
-    while True:
-      # wait up to a second for the latest packet from the PlayStation
-      packet = feed.get_latest(timeout=1.0)
-      if packet is None:
-        continue
+    try:
+        while True:
+            # Wait up to a second for a packet; skip if the game is paused or loading.
+            packet = feed.get_latest(timeout=1.0)
+            if packet is None:
+                continue
 
-      # If the game isn't paused or in a loading state, we'll update the terminal with the latest suspension info.
-      if not packet.flags.loading_or_processing and not packet.flags.paused:
-        report_suspension(packet.wheels)
-  finally:
-    # Without a `with` clause you must close the feed yourself.
-    curses.echo()
-    curses.nocbreak()
-    curses.endwin()
-    feed.close()
+            if not packet.flags.loading_or_processing and not packet.flags.paused:
+                report_suspension(packet.wheels)
+    finally:
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
+        feed.close()
 ```
 
-### Streaming position data directly to a plot
-Stream the car's position directly to a plot window. Here we'll plot the x and z axis, which track the horizontal plane. We also add a "heatmap" color to the plot to show the car's speed compared to it's max potential speed.</br>
-You can run this by calling `python3 examples/stream_position.py <your PS's IP address>` 
+### Live position plot
+
+Draws the car's path on a matplotlib figure as it drives. X and Z are the
+horizontal plane; Z is negated so the orientation matches the in-game minimap.
+Point colour encodes speed relative to the car's rated top speed.
+
+```bash
+python3 examples/stream_position.py <PlayStation IP>
+```
+
 ```python
 import sys
 from granturismo import Feed
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
-  ip_address = sys.argv[1]
+    ip_address = sys.argv[1]
 
-  # setup the plot styling
-  plt.ion() # allows us to continue to update the plot
-  fig, ax = plt.subplots(figsize=(8, 8))
-  ax.axis('off') # hides the black border around the axis.
-  plt.xticks([])
-  plt.yticks([])
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.axis('off')
+    plt.xticks([])
+    plt.yticks([])
 
-  # this will be the previous x and z points. We don't want to re-plot all our points because 
-  # that'll be too slow and the graph cant keep up with our stream. We're only gonna plot the newest segment.
-  px, pz = None, None
+    px, pz = None, None
 
-  count = 0
-  with Feed(ip_address) as feed:
-    while True:
-      count += 1
-      # only update graph every 10th of a second just cuz it doesn't matter for us, and it's easier on the computer
-      # but we still need to grab the packet even if we're not using it
-      packet = feed.get()
+    with Feed(ip_address) as feed:
+        while True:
+            packet = feed.get()
 
-      # note, we're negating z so the map will appear int he same orientation as it does in the game's minimap
-      x, z = packet.position.x, -packet.position.z
-      if px is None:
-        px, pz = x, z
-        continue
+            x, z = packet.position.x, -packet.position.z
+            if px is None:
+                px, pz = x, z
+                continue
 
-      # here we're getting the ratio of how fast the car's going compared to it's max speed.
-      # we're multiplying by 3 to boost the colorization range.
-      speed = min(1, packet.car_speed / packet.car_max_speed) * 3
-      # Now use the "speed" ratio to select the color from the Matplotlib pallet
-      color = plt.cm.plasma(speed)
+            # Map speed fraction to a plasma colour; multiply by 3 to spread
+            # the gradient across the lower end of the speed range.
+            speed = min(1, packet.car_speed / packet.car_max_speed) * 3
+            color = plt.cm.plasma(speed)
 
-      # plot the current step
-      plt.plot([px, x], [pz,  z], color=color)
+            plt.plot([px, x], [pz, z], color=color)
+            plt.gca().set_aspect('equal', adjustable='box')
+            plt.pause(0.00000000000000000001)
 
-      # set the aspect ratios to be equal for x/z axis, this way the map doesn't look skewed
-      plt.gca().set_aspect('equal', adjustable='box')
-
-      # pause for a freakishly shot amount of time. We need a pause so that it'll trigger a graph update
-      plt.pause(0.00000000000000000001)
-
-      # set the previous (x, z) to the current (x, z)
-      px, pz = x, z
+            px, pz = x, z
 ```
 
-## Data
-Because this is an unofficial API, the range expected min/max of each value is still unknown. As more effort is put into understanding this API, better information will be available. For now, here is what we know.
-*  int: `  packet_id`
-*  float: `received_time` the timestamp when the packet was received, before any decrypting or processing.  
-*  int: `  car_id` cars with more than 8 gears will overwrite this value with a gear ratio
-*  Optional(int): `lap_count` None if not in race
-*  Optional(int): `laps_in_race` None if not in race
-*  Optional(int): `best_lap_time` In milliseconds. None if not in race, or no lap complete. 
-*  Optional(int): `last_lap_time` In milliseconds. None if no lap completed
-*  Vector: `position`
-   * float: `x`
-   * float: `y`
-   * float: `z` 
-*  Vector: `velocity` in meters per second
-   * float: `x`
-   * float: `y`
-   * float: `z` 
-*  Vector: `angular_velocity` radians per second
-   * float: `x`
-   * float: `y`
-   * float: `z` 
-*  Rotation: `rotation` Seems to be the real part of a unit quaternion that gives the rotation of the car relative to the track coordinate system
-   * float: `pitch`
-   * float: `yaw`
-   * float: `roll` 
-*  Vector: `road_plane`
-   * float: `x`
-   * float: `y`
-   * float: `z` 
-*  float: `road_distance`: Should match the `body_height` when car is on the ground
-*  Wheels: `wheels`
-   * Wheel: `front_left`
-     * float: `suspension_height`: between 0-1. Lower number equates to uncompressed, higher number to a more compressed suspension
-     * float: `radius`: Radius of the tire in meters 
-     * float: `rps`: Rotations per second 
-     * float: `ground_speed`: The speed the tire is traveling on the ground in meters per second. 
-     * float: `temperature`: The surface temperature of the tire in celsius 
-   * Wheel: `front_right`
-       * float: `suspension_height`: between 0-1. Lower number equates to uncompressed, higher number to a more compressed suspension
-       * float: `radius`: Radius of the tire in meters
-       * float: `rps`: Rotations per second
-       * float: `ground_speed`: The speed the tire is traveling on the ground in meters per second.
-       * float: `temperature`: The surface temperature of the tire in celsius 
-   * Wheel: `rear_left` 
-       * float: `suspension_height`: between 0-1. Lower number equates to uncompressed, higher number to a more compressed suspension
-       * float: `radius`: Radius of the tire in meters
-       * float: `rps`: Rotations per second
-       * float: `ground_speed`: The speed the tire is traveling on the ground in meters per second.
-       * float: `temperature`: The surface temperature of the tire in celsius 
-   * Wheel: `rear_right`
-       * float: `suspension_height`: between 0-1. Lower number equates to uncompressed, higher number to a more compressed suspension
-       * float: `radius`: Radius of the tire in meters
-       * float: `rps`: Rotations per second
-       * float: `ground_speed`: The speed the tire is traveling on the ground in meters per second.
-       * float: `temperature`: The surface temperature of the tire in celsius 
-*  Flags: `flags`
-   * bool: `car_on_track`
-   * bool: `paused` 
-   * bool: `loading_or_processing` 
-   * bool: `in_gear` 0 when shifting or out of gear, standing 
-   * bool: `has_turbo` 
-   * bool: `rev_limiter_alert_active` 
-   * bool: `hand_brake_active` 
-   * bool: `lights_active` 
-   * bool: `lights_high_beams_active` 
-   * bool: `lights_low_beams_active` 
-   * bool: `asm_active` 
-   * bool: `tcs_active` 
-   * bool: `unused1` always False 
-   * bool: `unused2` always False 
-   * bool: `unused3` always False 
-   * bool: `unused4` always False 
-*  float: `orientation`
-*  float: `body_height` in meters
-*  float: `engine_rpm` 0-?
-*  float: `gas_level` 0-100
-*  float: `gas_capacity` 100 for gas cars, 5 for karts, 0 for electric
-*  float: `car_speed` in meters per second
-*  float: `turbo_boost` this value - 1 gives the Turbo Boost display
-*  float: `oil_pressure` in bars?
-*  float: `oil_temperature` in celsius. Seems to always be 85.0
-*  float: `water_temperature` in celsius. Seems to always be 110.0
-*  int: `time_of_day` millisecond timestamp, time of day indicates race start time of day, affected by Variable Time Speed Ratio, useless for timing when time speed ratio is not 1
-*  Optional(int): `start_position` only available before race starts, otherwise None
-*  Optional(int): `cars_in_race` only available before race starts, otherwise None
-*  Bounds: `rpm_alert`
-   * float: `min` 0-?
-   * float: `max` 0-?
-*  int:  `car_max_speed` in meters per second
-*  float: `transmission_max_speed`	corresponds to the Top Speed setting of a customizable gear box in the car settings, given as gear ratio 
-*  int: `throttle` between 0-255
-*  int: `brake` between 0-255
-*  float: `clutch` between 0-1. This seems to correlate with the clutch peddle
-*  float: `clutch_engagement` between 0-1
-*  float: `clutch_gearbox_rpm`
-*  Optional(int): `current_gear` 0-4: current gear, 0 is reverse, None is neutral
-*  Optional(int): `suggested_gear`. None if there's no suggested gear
-*  List(float): `gear_ratios` 1st - Nth gear. 
-*  int: `unused_0x93` always 0
-*  int: `unused_0xD4` always 0
+## Packet reference
 
-## Self-contained bundle
-`python scripts/build_tarball.py --lib-root . --output dist/granturismo-selfcontained.tar.gz`
-produces an architecture-independent tarball (`proxy-wrapper.py` + the `granturismo`
-package, including the UDP→NDJSON `proxy.py`). Because the library is pure standard
-library, the bundle vendors no third-party packages and runs on a stock `python3`.
+See [PACKET.md](PACKET.md) for the full field listing — top-level fields, per-wheel fields, and the `Flags` bitfield.
 
-## References
-The GT7 telemetry wire format documented here is the result of community
-reverse-engineering; this project is an independent implementation of it.
+## Bundle
 
-[Nenkai](https://github.com/Nenkai) originally discovered this interface — how to
-decrypt and communicate with it — and did extensive research into each value.
+`build_tarball.py` produces an architecture-independent tarball containing
+`proxy-wrapper.py` and the `granturismo` package (including `proxy.py`, a
+UDP→NDJSON forwarder). Because the library uses only the standard library, the
+bundle vendors nothing and runs on a plain `python3`.
 
-[tarnheld](https://www.gtplanet.net/forum/threads/gt7-is-compatible-with-motion-rig.410728/page-4) for their work in identifying data values/ranges.
+```bash
+python scripts/build_tarball.py --lib-root . --output dist/granturismo-selfcontained.tar.gz
+```
+
+## Credits
+
+The GT7 Simulator Interface was reverse-engineered by the community.
+[Nenkai](https://github.com/Nenkai) identified the protocol, the Salsa20 key and
+nonce derivation, and the meaning of most packet fields.
+[tarnheld](https://www.gtplanet.net/forum/threads/gt7-is-compatible-with-motion-rig.410728/page-4)
+contributed additional field identification.
