@@ -17,7 +17,7 @@ _KEY = b"Simulator Interface Packet GT7 v"
 # The seed lives at this offset in the encrypted packet ...
 _SEED_OFFSET = 0x40
 # ... and the second nonce word is the seed XOR'd with this constant.
-_NONCE_MASK = 0xDEADBEAF
+_NONCE_MASK = 0xDEADBEEF
 
 
 class Decrypter:

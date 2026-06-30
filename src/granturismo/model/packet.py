@@ -35,6 +35,10 @@ def _u(b: bytes, off: int, size: int) -> int:
     return int.from_bytes(b[off:off + size], "little")
 
 
+def _i32(b: bytes, off: int) -> int:
+    return struct.unpack_from("<i", b, off)[0]
+
+
 @dataclass(frozen=True)
 class Packet:
     packet_id: int
@@ -44,6 +48,7 @@ class Packet:
     laps_in_race: Optional[int]
     best_lap_time: Optional[int]
     last_lap_time: Optional[int]
+    current_lap_time: Optional[int]  # ms; None when not in a timed lap (Packet C only)
 
     position: Vector
     velocity: Vector
@@ -98,6 +103,10 @@ class Packet:
 
         best_lap_time = _none_if(_u(b, 120, 4), _U32_NONE)
         last_lap_time = _none_if(_u(b, 124, 4), _U32_NONE)
+        # Packet C (368 bytes): current lap timer in ms; -1 when no timed lap active.
+        # surface_type (4 bytes) precedes it at offset 344.
+        _clt = _i32(b, 348) if len(b) >= 352 else -1
+        current_lap_time = None if _clt < 0 else _clt
         lap_count = _none_if(_u(b, 116, 2), _U16_NONE)
         laps_in_race = _none_if(_u(b, 118, 2), _U16_NONE)
 
@@ -118,6 +127,7 @@ class Packet:
             laps_in_race=laps_in_race,
             best_lap_time=best_lap_time,
             last_lap_time=last_lap_time,
+            current_lap_time=current_lap_time,
             position=Vector(_f32(b, 4), _f32(b, 8), _f32(b, 12)),
             velocity=Vector(_f32(b, 16), _f32(b, 20), _f32(b, 24)),
             angular_velocity=Vector(_f32(b, 44), _f32(b, 48), _f32(b, 52)),

@@ -35,7 +35,7 @@ class Feed:
     # The console listens for heartbeats here and streams telemetry back to us.
     HEARTBEAT_PORT = 33739
     BIND_PORT = 33740
-    HEARTBEAT_MESSAGE = b"A"
+    HEARTBEAT_MESSAGE = b"C"
     HEARTBEAT_INTERVAL = 10.0  # seconds; the console stops streaming without it
     _RECV_BUFFER = 0x128       # GT7 packets are 296 bytes
     _SOCKET_TIMEOUT = 1.0      # lets the receiver notice shutdown promptly
