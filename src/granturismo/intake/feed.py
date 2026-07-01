@@ -37,7 +37,7 @@ class Feed:
     BIND_PORT = 33740
     HEARTBEAT_MESSAGE = b"C"
     HEARTBEAT_INTERVAL = 10.0  # seconds; the console stops streaming without it
-    _RECV_BUFFER = 0x128       # GT7 packets are 296 bytes
+    _RECV_BUFFER = 0x200       # 512B; format-C packets are 368 bytes (must not truncate)
     _SOCKET_TIMEOUT = 1.0      # lets the receiver notice shutdown promptly
 
     def __init__(self, addr: str):
